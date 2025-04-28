@@ -4,21 +4,34 @@ import datetime
 from calendar import monthrange
 from logic import FinancialTracker
 import os
+import sys # Import sys module
 
 class FinancialTrackerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Pocket Financial Tracker")
-        self.root.geometry("600x500")
+        self.root.geometry("650x650") # Increased size further for new settings
 
-        # Ensure data file path is correct relative to script location
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        data_file_path = os.path.join(script_dir, "data.json")
+        # Determine base path (executable dir or script dir)
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            # Running as packaged app
+            base_path = os.path.dirname(sys.executable)
+        else:
+            # Running as script
+            base_path = os.path.dirname(os.path.abspath(__file__))
+
+        data_file_path = os.path.join(base_path, "data.json")
+        print(f"Data file path: {data_file_path}") # Add print for debugging
         self.tracker = FinancialTracker(data_file=data_file_path)
 
         self.selected_date = datetime.date.today()
         self.current_display_month = self.selected_date.month
         self.current_display_year = self.selected_date.year
+
+        # UI Variables
+        self.calendar_display_mode = tk.StringVar(value="date_only") # date_only, show_remaining, show_spent
+        self.surplus_enabled_var = tk.BooleanVar(value=self.tracker.data["settings"].get("surplus_enabled", False))
+        self.surplus_days_var = tk.StringVar(value=str(self.tracker.data["settings"].get("surplus_distribution_days", 4)))
 
         self.create_widgets()
         self.update_calendar()
@@ -90,19 +103,19 @@ class FinancialTrackerApp:
         ttk.Button(input_frame, text="Add Income", command=self.add_income).grid(row=0, column=2, padx=5, pady=5)
         ttk.Button(input_frame, text="Add Expense", command=self.add_expense).grid(row=0, column=3, padx=5, pady=5)
 
-        # --- Settings Widgets (Right Frame) ---
-        settings_frame = ttk.LabelFrame(right_frame, text="Settings", padding="10")
-        settings_frame.pack(fill=tk.X)
+        # --- Savings/Limit Settings Widgets (Right Frame) ---
+        savings_settings_frame = ttk.LabelFrame(right_frame, text="Savings/Limit Settings", padding="10")
+        savings_settings_frame.pack(fill=tk.X, pady=(0, 10))
 
         self.settings_var = tk.StringVar(value="percentage") # Default to percentage
-        ttk.Radiobutton(settings_frame, text="Save %", variable=self.settings_var, value="percentage", command=self.update_settings_input).grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        ttk.Radiobutton(settings_frame, text="Fixed Limit $", variable=self.settings_var, value="fixed", command=self.update_settings_input).grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        ttk.Radiobutton(savings_settings_frame, text="Save %", variable=self.settings_var, value="percentage", command=self.update_settings_input).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        ttk.Radiobutton(savings_settings_frame, text="Fixed Limit $", variable=self.settings_var, value="fixed", command=self.update_settings_input).grid(row=1, column=0, padx=5, pady=5, sticky="w")
 
-        self.settings_value_entry = ttk.Entry(settings_frame, width=10)
+        self.settings_value_entry = ttk.Entry(savings_settings_frame, width=10)
         self.settings_value_entry.grid(row=0, column=1, rowspan=2, padx=5, pady=5)
-        ttk.Button(settings_frame, text="Save Settings", command=self.save_settings).grid(row=0, column=2, rowspan=2, padx=5, pady=5)
+        ttk.Button(savings_settings_frame, text="Save Settings", command=self.save_savings_settings).grid(row=0, column=2, rowspan=2, padx=5, pady=5)
 
-        # Load initial settings values
+        # Load initial savings settings values
         if self.tracker.data["settings"]["fixed_daily_limit"] is not None:
             self.settings_var.set("fixed")
             self.settings_value_entry.insert(0, str(self.tracker.data["settings"]["fixed_daily_limit"]))
@@ -111,11 +124,29 @@ class FinancialTrackerApp:
             self.settings_value_entry.insert(0, str(self.tracker.data["settings"]["savings_percentage"]))
         self.update_settings_input() # Ensure correct state initially
 
+        # --- Surplus Settings Widgets (Right Frame) ---
+        surplus_settings_frame = ttk.LabelFrame(right_frame, text="Surplus Distribution Settings", padding="10")
+        surplus_settings_frame.pack(fill=tk.X, pady=(0, 10))
+
+        ttk.Checkbutton(surplus_settings_frame, text="Enable Surplus Distribution", variable=self.surplus_enabled_var).grid(row=0, column=0, columnspan=2, sticky="w", padx=5, pady=2)
+        ttk.Label(surplus_settings_frame, text="Distribute over (days):").grid(row=1, column=0, sticky="w", padx=5, pady=2)
+        self.surplus_days_entry = ttk.Entry(surplus_settings_frame, textvariable=self.surplus_days_var, width=5)
+        self.surplus_days_entry.grid(row=1, column=1, sticky="w", padx=5, pady=2)
+        ttk.Button(surplus_settings_frame, text="Save Surplus Settings", command=self.save_surplus_settings).grid(row=0, column=2, rowspan=2, padx=5, pady=5)
+
+        # --- Display Settings Widgets (Right Frame) ---
+        display_settings_frame = ttk.LabelFrame(right_frame, text="Calendar Display Settings", padding="10")
+        display_settings_frame.pack(fill=tk.X)
+
+        ttk.Radiobutton(display_settings_frame, text="Date Only", variable=self.calendar_display_mode, value="date_only", command=self.update_calendar).pack(anchor=tk.W)
+        ttk.Radiobutton(display_settings_frame, text="Show Remaining", variable=self.calendar_display_mode, value="show_remaining", command=self.update_calendar).pack(anchor=tk.W)
+        ttk.Radiobutton(display_settings_frame, text="Show Spent", variable=self.calendar_display_mode, value="show_spent", command=self.update_calendar).pack(anchor=tk.W)
+
     def update_settings_input(self):
         # Optional: Could add validation or change labels based on selection
         pass
 
-    def save_settings(self):
+    def save_savings_settings(self):
         try:
             value = float(self.settings_value_entry.get())
             if self.settings_var.get() == "percentage":
@@ -134,10 +165,29 @@ class FinancialTrackerApp:
                     return
             # Recalculate and update display for the currently selected date
             self.update_details_for_date(self.selected_date)
+            self.update_calendar() # Update calendar as limits might change
         except ValueError:
             messagebox.showerror("Error", "Invalid input for settings value. Please enter a number.")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save settings: {e}")
+
+    def save_surplus_settings(self):
+        try:
+            enabled = self.surplus_enabled_var.get()
+            days = int(self.surplus_days_var.get())
+            if days < 1:
+                messagebox.showerror("Error", "Distribution days must be at least 1.")
+                return
+
+            self.tracker.set_surplus_settings(enabled, days)
+            messagebox.showinfo("Settings Saved", f"Surplus distribution settings saved (Enabled: {enabled}, Days: {days})")
+            # Recalculate and update display
+            self.update_details_for_date(self.selected_date)
+            self.update_calendar()
+        except ValueError:
+            messagebox.showerror("Error", "Invalid input for distribution days. Please enter a whole number.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save surplus settings: {e}")
 
     def update_calendar(self):
         # Clear previous calendar
@@ -149,7 +199,7 @@ class FinancialTrackerApp:
         # Add day headers
         days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         for i, day in enumerate(days):
-            ttk.Label(self.calendar_frame, text=day, width=4, anchor="center").grid(row=0, column=i, padx=1, pady=1)
+            ttk.Label(self.calendar_frame, text=day, width=3, anchor="center").grid(row=0, column=i, padx=1, pady=1)
 
         # Get calendar data
         month_cal = monthrange(self.current_display_year, self.current_display_month)
@@ -167,15 +217,27 @@ class FinancialTrackerApp:
                     date_obj = datetime.date(self.current_display_year, self.current_display_month, current_day)
                     date_str = date_obj.strftime("%Y-%m-%d")
                     limit = self.tracker.get_daily_limit(date_str)
+                    expenses = self.tracker.get_daily_expenses(date_str)
+                    remaining = limit - expenses
 
-                    # Basic styling based on limit/selection
+                    # Determine button text based on display mode
+                    display_text = str(current_day)
+                    if self.calendar_display_mode.get() == "show_remaining":
+                        display_text = f"{remaining:.0f}"
+                    elif self.calendar_display_mode.get() == "show_spent":
+                        display_text = f"{expenses:.0f}"
+
+                    # Determine button style
                     style = "TButton"
                     if date_obj == self.selected_date:
                         style = "Selected.TButton"
+                    elif expenses > limit and limit > 0: # Exceeded limit (and limit was positive)
+                        style = "Exceeded.TButton"
                     elif limit > 0:
                         style = "HasLimit.TButton"
 
-                    btn = ttk.Button(self.calendar_frame, text=str(current_day), width=4,
+                    # Make button smaller (width=3)
+                    btn = ttk.Button(self.calendar_frame, text=display_text, width=3,
                                      command=lambda d=date_obj: self.select_date(d), style=style)
                     btn.grid(row=week + 1, column=day_of_week, padx=1, pady=1, sticky="nsew")
                     current_day += 1
@@ -189,6 +251,7 @@ class FinancialTrackerApp:
         style = ttk.Style()
         style.configure("Selected.TButton", background="lightblue")
         style.configure("HasLimit.TButton", foreground="blue") # Indicate days with calculated limits
+        style.configure("Exceeded.TButton", foreground="red") # Indicate days where limit was exceeded
 
     def select_date(self, date_obj):
         self.selected_date = date_obj
@@ -230,8 +293,11 @@ class FinancialTrackerApp:
         if transactions:
             for t in transactions:
                 sign = "-" if t["type"] == "expense" else "+"
-                desc = f": {t['description']}" if t['description'] else ""
-                self.transactions_list.insert(tk.END, f"{sign}${t['amount']:.2f} ({t['type']}){desc}")
+                desc_text = t.get("description", "")
+                desc = f": {desc_text}" if desc_text else ""
+                amount_val = t["amount"]
+                type_val = t["type"]
+                self.transactions_list.insert(tk.END, f"{sign}${amount_val:.2f} ({type_val}){desc}")
         else:
             self.transactions_list.insert(tk.END, "No transactions for this date.")
 
@@ -269,8 +335,11 @@ class FinancialTrackerApp:
     def on_closing(self):
         """Handle window closing event."""
         try:
+            print("Attempting to save data...") # Add print for debugging
             self.tracker.save_data()
+            print("Data saved successfully.") # Add print for debugging
         except Exception as e:
+            print(f"Error saving data: {e}") # Add print for debugging
             messagebox.showwarning("Save Error", f"Could not save data: {e}")
         self.root.destroy()
 

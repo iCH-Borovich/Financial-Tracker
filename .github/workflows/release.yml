@@ -41,9 +41,10 @@ jobs:
         pip install pyinstaller
 
     - name: Build binary with PyInstaller
+      shell: bash
       run: |
         pyinstaller --onefile --windowed --name FinancialTracker \
-                    --hidden-import tkinter main.py
+                    --hidden-import=tkinter main.p
 
     - name: Package artefact
       shell: bash
@@ -53,7 +54,7 @@ jobs:
 
     - uses: actions/upload-artifact@v4
       with:
-        name: release-files
+        name: release-${{ runner.os }}
         path: dist/${{ matrix.artifact }}
 
   release:
@@ -64,7 +65,7 @@ jobs:
 
     - uses: actions/download-artifact@v4
       with:
-        name: release-files
+        name: release-*
         path: dist
 
     - name: Create / update GitHub Release

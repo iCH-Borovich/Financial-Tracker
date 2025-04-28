@@ -85,6 +85,7 @@ jobs:
       with:
         files: dist/*.zip
         tag_name: ${{ github.ref_name || github.event.inputs.tag }}
+        name: "${{ github.ref_name }}-${{ github.event.inputs.tag || github.ref_name }}"
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

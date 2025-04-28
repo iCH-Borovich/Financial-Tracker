@@ -1,5 +1,8 @@
 name: build-and-release
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
     inputs:
@@ -75,6 +78,7 @@ jobs:
       with:
         pattern: release-*
         path: dist
+        merge-multiple: true
 
     - name: Create / update GitHub Release
       uses: softprops/action-gh-release@v2

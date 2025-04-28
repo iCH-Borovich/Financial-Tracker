@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox, simpledialog
 import datetime
 from calendar import monthrange
 from logic import FinancialTracker
+from tr_dialog import EditTransactionDialog
 import os
 import sys # Import sys module
 
@@ -80,6 +81,8 @@ class FinancialTrackerApp:
         self.daily_spent_label.pack()
         self.daily_remaining_label = ttk.Label(details_frame, text="Remaining Today: $0.00")
         self.daily_remaining_label.pack()
+        self.total_balance_label = ttk.Label(details_frame, text="Balance: $0.00")
+        self.total_balance_label.pack()
 
         # --- Transaction List (Right Frame) ---
         transactions_frame = ttk.LabelFrame(right_frame, text="Transactions", padding="10")
@@ -87,6 +90,7 @@ class FinancialTrackerApp:
 
         self.transactions_list = tk.Listbox(transactions_frame, height=6)
         self.transactions_list.pack(fill=tk.BOTH, expand=True)
+        self.transactions_list.bind("<Button-3>", self._tx_context)
 
         # --- Input Widgets (Right Frame) ---
         input_frame = ttk.LabelFrame(right_frame, text="Add Transaction", padding="10")
@@ -274,33 +278,6 @@ class FinancialTrackerApp:
             self.current_display_month += 1
         self.update_calendar()
 
-    def update_details_for_date(self, date_obj):
-        date_str = date_obj.strftime("%Y-%m-%d")
-        self.selected_date_label.config(text=f"Date: {date_str}")
-
-        daily_limit = self.tracker.get_daily_limit(date_str)
-        self.daily_limit_label.config(text=f"Daily Limit: ${daily_limit:.2f}")
-
-        daily_expenses = self.tracker.get_daily_expenses(date_str)
-        self.daily_spent_label.config(text=f"Spent Today: ${daily_expenses:.2f}")
-
-        remaining = daily_limit - daily_expenses
-        self.daily_remaining_label.config(text=f"Remaining Today: ${remaining:.2f}")
-
-        # Update transactions list
-        self.transactions_list.delete(0, tk.END)
-        transactions = self.tracker.get_transactions_for_date(date_str)
-        if transactions:
-            for t in transactions:
-                sign = "-" if t["type"] == "expense" else "+"
-                desc_text = t.get("description", "")
-                desc = f": {desc_text}" if desc_text else ""
-                amount_val = t["amount"]
-                type_val = t["type"]
-                self.transactions_list.insert(tk.END, f"{sign}${amount_val:.2f} ({type_val}){desc}")
-        else:
-            self.transactions_list.insert(tk.END, "No transactions for this date.")
-
     def add_income(self):
         self._add_transaction("income")
 
@@ -331,6 +308,66 @@ class FinancialTrackerApp:
             messagebox.showerror("Error", "Invalid amount. Please enter a number.")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to add transaction: {e}")
+
+    def _tx_context(self, event):
+        sel = self.transactions_list.curselection()
+        if not sel: return
+        idx = sel[0]
+        menu = tk.Menu(self.root, tearoff=0)
+        menu.add_command(label="Edit…", command=lambda: self._edit_tx(idx))
+        menu.add_command(label="Delete", command=lambda: self._del_tx(idx))
+        menu.post(event.x_root, event.y_root)
+
+    def _del_tx(self, idx):
+        try:
+            self.tracker.remove_transaction(self.selected_date.strftime("%Y-%m-%d"), idx)
+            self.update_details_for_date(self.selected_date)
+            self.update_calendar()
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
+
+    def _edit_tx(self, idx):
+        date_str = self.selected_date.strftime("%Y-%m-%d")
+        tx = self.tracker.get_transactions_for_date(date_str)[idx]
+
+        dlg = EditTransactionDialog(self.root, tx)
+        self.root.wait_window(dlg)
+
+        if not dlg.result:    # cancelled
+            return
+
+        self.tracker.edit_transaction(
+            date_str,
+            idx,
+            amount=dlg.result["amount"],
+            transaction_type=dlg.result["type"],
+            description=dlg.result["desc"]
+        )
+        self.update_details_for_date(self.selected_date)
+        self.update_calendar()
+
+    def update_details_for_date(self, date_obj: datetime.date):
+            date_str = date_obj.strftime("%Y-%m-%d")
+            self.selected_date_label.config(text=f"Date: {date_str}")
+
+            limit     = self.tracker.get_daily_limit(date_str)
+            spent     = self.tracker.get_daily_expenses(date_str)
+            remaining = limit - spent
+            balance   = self.tracker.get_balance_summary()["remaining_balance"]
+
+            self.daily_limit_label.config(text=f"Daily Limit: ${limit:.2f}")
+            self.daily_spent_label.config(text=f"Spent Today: ${spent:.2f}")
+            self.daily_remaining_label.config(text=f"Remaining Today: ${remaining:.2f}")
+            self.total_balance_label.config(text=f"Balance: ${balance:.2f}")
+
+            # refresh transaction list
+            self.transactions_list.delete(0, tk.END)
+            for idx, t in enumerate(self.tracker.get_transactions_for_date(date_str)):
+                sign = "-" if t["type"] == "expense" else "+"
+                desc = f": {t['description']}" if t.get("description") else ""
+                self.transactions_list.insert(idx, f"{sign}${t['amount']:.2f} ({t['type']}){desc}")
+            if self.transactions_list.size() == 0:
+                self.transactions_list.insert(0, "No transactions for this date.")
 
     def on_closing(self):
         """Handle window closing event."""

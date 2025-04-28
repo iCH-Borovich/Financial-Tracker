@@ -55,30 +55,65 @@ class FinancialTracker:
         with open(self.data_file, 'w') as f:
             json.dump(self.data, f, indent=2)
 
-    def add_transaction(self, date_str, amount, transaction_type="expense", description=""):
-        """
-        Add a transaction for a specific date
+    def add_transaction(
+        self,
+        date_str: str,
+        amount: float,
+        transaction_type: str = "expense",
+        description: str = ""
+    ):
+        """Add income / expense.  Mid-period incomes are treated as top-ups."""
+        self.data["transactions"].setdefault(date_str, [])
+        amount = abs(float(amount))  # always positive
 
-        Args:
-            date_str (str): Date in format 'YYYY-MM-DD'
-            amount (float): Transaction amount (positive number)
-            transaction_type (str): Either 'income' or 'expense'
-            description (str): Optional description of the transaction
-        """
-        if date_str not in self.data["transactions"]:
-            self.data["transactions"][date_str] = []
-
-        # Ensure amount is positive, we'll handle sign based on transaction type
-        amount = abs(float(amount))
-
-        transaction = {
+        self.data["transactions"][date_str].append({
             "type": transaction_type,
             "amount": amount,
             "description": description,
             "timestamp": datetime.datetime.now().isoformat()
-        }
+        })
 
-        self.data["transactions"][date_str].append(transaction)
+        # supplemental income logic
+        if transaction_type == "income":
+            income_dates = sorted(
+                d for d, txs in self.data["transactions"].items()
+                if any(t["type"] == "income" for t in txs)
+            )
+            # first income of period = “payday”, anything later = “top-up”
+            if income_dates and date_str != income_dates[0]:
+                days = max(1, self.data["settings"].get("surplus_distribution_days", 4))
+                chunk = amount / days
+                base  = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+                for i in range(days):
+                    key = (base + datetime.timedelta(days=i)).strftime("%Y-%m-%d")
+                    self.data["surplus_adjustments"][key] = self.data["surplus_adjustments"].get(key, 0) + chunk
+                # no new payday created → just recalc from today onward
+                self._recalculate_daily_limits(date_str)
+                self.save_data()
+                return
+
+        # default path
+        self._recalculate_daily_limits(date_str)
+        self.save_data()
+
+    def remove_transaction(self, date_str, idx):
+        """Delete a transaction by list index, then recalc limits."""
+        try:
+            self.data["transactions"][date_str].pop(idx)
+            if not self.data["transactions"][date_str]:
+                del self.data["transactions"][date_str]
+            self._recalculate_daily_limits(date_str)
+            self.save_data()
+        except (KeyError, IndexError):
+            raise ValueError("Bad date or index")
+
+    def edit_transaction(self, date_str, idx, *, amount=None,
+                        transaction_type=None, description=None):
+        """In-place edit, keep timestamp."""
+        t = self.data["transactions"][date_str][idx]
+        if amount is not None:          t["amount"] = abs(float(amount))
+        if transaction_type is not None: t["type"]   = transaction_type
+        if description is not None:      t["description"] = description
         self._recalculate_daily_limits(date_str)
         self.save_data()
 
@@ -126,30 +161,23 @@ class FinancialTracker:
             return self.data["daily_limits"][date_str]
         return 0
 
-    def _get_days_in_period(self, start_date_str, end_date_str=None):
+    def _get_days_in_period(self, start_date_str: str, end_date_str: str | None = None) -> int:
         """
-        Calculate number of days between start_date and end_date (exclusive of end_date)
-        If end_date is None, calculate days until next month's same day
+        If a *fixed* daily limit is active → return how many whole days the
+        incoming cash can cover. Otherwise fall back to “until next-month same-day”.
         """
+        fixed = self.data["settings"]["fixed_daily_limit"]
+        if fixed is not None and fixed > 0:
+            available = self.get_payday_income(start_date_str)
+            return int(available // fixed)  # whole days until balance would hit zero
         start_date = datetime.datetime.strptime(start_date_str, "%Y-%m-%d").date()
-
         if end_date_str:
             end_date = datetime.datetime.strptime(end_date_str, "%Y-%m-%d").date()
         else:
-            # Calculate next month's same day
-            if start_date.month == 12:
-                next_month = 1
-                next_year = start_date.year + 1
-            else:
-                next_month = start_date.month + 1
-                next_year = start_date.year
-
-            # Handle cases where the day might not exist in the next month
-            days_in_next_month = monthrange(next_year, next_month)[1]
-            next_day = min(start_date.day, days_in_next_month)
-
-            end_date = datetime.date(next_year, next_month, next_day)
-
+            next_month = 1 if start_date.month == 12 else start_date.month + 1
+            next_year  = start_date.year + 1 if start_date.month == 12 else start_date.year
+            days_next  = monthrange(next_year, next_month)[1]
+            end_date   = datetime.date(next_year, next_month, min(start_date.day, days_next))
         return (end_date - start_date).days
 
     def _calculate_initial_daily_limit(self, payday_date_str, days_in_period):

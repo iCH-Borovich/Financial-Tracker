@@ -2,7 +2,7 @@
 
 ## Table of Contents
 1. [Introduction](#introduction)
-2. [Installation](#installation)
+2. [Build](#build)
 3. [Getting Started](#getting-started)
 4. [Main Features](#main-features)
 5. [User Interface Guide](#user-interface-guide)
@@ -17,15 +17,8 @@ Pocket Financial Tracker is a minimalistic application designed to help you mana
 
 The application is designed with simplicity in mind, focusing on the essential features needed for effective daily financial management without overwhelming you with complex options.
 
-## Installation
+## Build
 
-### Linux
-1. Download the `financial_tracker_linux_fixed.zip` file
-2. Extract the zip file to a location of your choice
-3. Make the file executable with `chmod +x FinancialTracker`
-4. Run the application with `./FinancialTracker`
-
-### macOS and Windows
 To build the application on your platform:
 
 1. Ensure Python is installed on your system
@@ -119,7 +112,7 @@ When using fixed daily limit:
 ### Rollover/Deficit Logic
 - **If you spend less than your daily limit**: The unspent amount is added to the next day's limit
   - Example: If your limit is $26 and you spend $20, the next day's limit will be $26 + $6 = $32
-  
+
 - **If you spend more than your daily limit**: The excess is subtracted from the next day's limit
   - Example: If your limit is $26 and you spend $30, the next day's limit will be $26 - ($30 - $26) = $22
 

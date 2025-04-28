@@ -253,7 +253,8 @@ class FinancialTracker:
             del self.data["surplus_adjustments"][k]
 
         # Generate all dates in the period
-        current_date = datetime.datetime.strptime(payday_date_str, "%Y-%m-%d").date()
+        current_date = (datetime.datetime.strptime(payday_date_str, "%Y-%m-%d").date()
+                        + datetime.timedelta(days=1))
         end_date = current_date + datetime.timedelta(days=days_in_period) if days_in_period else None
 
         # Initialize with the initial daily limit

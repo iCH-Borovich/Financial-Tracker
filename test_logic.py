@@ -68,8 +68,8 @@ class TestFinancialTracker(unittest.TestCase):
         self.tracker._recalculate_daily_limits(payday)
         daily_limit = self.tracker.get_daily_limit(next_day)
 
-        # Use a wider delta to account for date calculation variations
-        self.assertAlmostEqual(daily_limit, 51.61, delta=0.1)
+        # Day after payday now equals the base limit
+        self.assertAlmostEqual(daily_limit, 25.81, delta=0.1)
 
     def test_rollover_deficit(self):
         """Test rollover/deficit logic"""
@@ -94,8 +94,8 @@ class TestFinancialTracker(unittest.TestCase):
         day2 = "2025-05-12"
         reduced_limit = self.tracker.get_daily_limit(day2)
 
-        # Update the test to match the actual calculation
-        self.assertAlmostEqual(reduced_limit, 47.42, delta=0.1)
+        # New next-day limit = 25.81 – deficit (4.19) ≈ 21.61
+        self.assertAlmostEqual(reduced_limit, 21.61, delta=0.1)
 
         # Add expense less than daily limit
         self.tracker.add_transaction(day2, 10, "expense", "Underspent")

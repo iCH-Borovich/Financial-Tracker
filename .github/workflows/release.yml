@@ -46,11 +46,19 @@ jobs:
         pyinstaller --onefile --windowed --name FinancialTracker \
                     --hidden-import=tkinter main.py
 
-    - name: Package artefact
+    - name: Package artifact
+      if: runner.os != 'Windows'
       shell: bash
       run: |
         cd dist
         zip -r "${{ matrix.artifact }}" "${{ matrix.exe_name }}"
+
+    - name: Package artifact (windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        Compress-Archive -Path "dist\\${{ matrix.exe_name }}" `
+                         -DestinationPath "dist\\${{ matrix.artifact }}"
 
     - uses: actions/upload-artifact@v4
       with:

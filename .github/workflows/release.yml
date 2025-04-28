@@ -44,7 +44,7 @@ jobs:
       shell: bash
       run: |
         pyinstaller --onefile --windowed --name FinancialTracker \
-                    --hidden-import=tkinter main.p
+                    --hidden-import=tkinter main.py
 
     - name: Package artefact
       shell: bash

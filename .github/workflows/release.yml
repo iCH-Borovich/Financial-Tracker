@@ -1,0 +1,78 @@
+name: build-and-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag (vX.Y.Z)"
+        required: true
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            py: "3.11"
+            artifact: FinancialTracker-linux.zip
+            exe_name: FinancialTracker            # produced by PyInstaller
+          - os: macos-latest
+            py: "3.11"
+            artifact: FinancialTracker-macos.zip
+            exe_name: FinancialTracker.app        # bundle produced on mac
+          - os: windows-latest
+            py: "3.11"
+            artifact: FinancialTracker-windows.exe.zip
+            exe_name: FinancialTracker.exe
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.py }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Build binary with PyInstaller
+      run: |
+        pyinstaller --onefile --windowed --name FinancialTracker \
+                    --hidden-import tkinter main.py
+
+    - name: Package artefact
+      shell: bash
+      run: |
+        cd dist
+        zip -r "${{ matrix.artifact }}" "${{ matrix.exe_name }}"
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: release-files
+        path: dist/${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/download-artifact@v4
+      with:
+        name: release-files
+        path: dist
+
+    - name: Create / update GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: dist/*.zip
+        tag_name: ${{ github.ref_name || github.event.inputs.tag }}
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
